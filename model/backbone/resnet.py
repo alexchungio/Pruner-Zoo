@@ -36,23 +36,22 @@ class BasicBlock(nn.Module):
 class Bottleneck(nn.Module):
     expansion = 4
 
-    def __init__(self, in_planes, planes, stride=1):
+    def __init__(self, in_planes, planes, stride=1, cfg=None):
         super(Bottleneck, self).__init__()
-        self.conv1 = nn.Conv2d(in_planes, planes, kernel_size=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(planes)
-        self.conv2 = nn.Conv2d(planes, planes, kernel_size=3,
+        self.conv1 = nn.Conv2d(cfg[0], cfg[1], kernel_size=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(cfg[1])
+        self.conv2 = nn.Conv2d(cfg[1], cfg[2], kernel_size=3,
                                stride=stride, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(planes)
-        self.conv3 = nn.Conv2d(planes, self.expansion *
-                               planes, kernel_size=1, bias=False)
-        self.bn3 = nn.BatchNorm2d(self.expansion*planes)
+        self.bn2 = nn.BatchNorm2d(cfg[2])
+        self.conv3 = nn.Conv2d(cfg[2], cfg[3], kernel_size=1, bias=False)
+        self.bn3 = nn.BatchNorm2d(cfg[3])
 
         self.shortcut = nn.Sequential()
-        if stride != 1 or in_planes != self.expansion*planes:
+        if stride != 1 or cfg[0] != cfg[3]:
             self.shortcut = nn.Sequential(
-                nn.Conv2d(in_planes, self.expansion*planes,
+                nn.Conv2d(cfg[0], cfg[3],
                           kernel_size=1, stride=stride, bias=False),
-                nn.BatchNorm2d(self.expansion*planes)
+                nn.BatchNorm2d(cfg[3])
             )
 
     def forward(self, x):
@@ -67,21 +66,34 @@ class Bottleneck(nn.Module):
 class ResNet(nn.Module):
     def __init__(self, block, num_blocks, cfg=None, num_classes=100):
         super(ResNet, self).__init__()
+        assert sum(num_blocks) * 3 + 2 >= 50  # only support resnet-50, resnet-101, resnet-152
         self.in_planes = 16
+        if cfg is None:
+            cfg = [[16], # stem
+                   [16, 16, 16*block.expansion] * num_blocks[0],  # stage-1
+                   [32, 32, 32*block.expansion] * num_blocks[1],  # stage-2
+                   [64, 64, 64*block.expansion] * num_blocks[2],  # stage-3
+                   [128, 128, 128*block.expansion] * num_blocks[3]]  # stage-4
+            cfg = [item for sub_cfg in cfg for item in sub_cfg]
         # this layer is different from torchvision.resnet18() since this model adopted for Cifar100
-        self.conv1 = nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(16)
-        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1)
-        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2)
-        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2)
-        self.layer4 = self._make_layer(block, 128, num_blocks[3], stride=2)
-        self.fc = nn.Linear(128*block.expansion, num_classes)
+        self.conv1 = nn.Conv2d(3, cfg[0], kernel_size=3, stride=1, padding=1, bias=False)
+        self.bn1 = nn.BatchNorm2d(cfg[0])
+        self.layer1 = self._make_layer(block, 16, num_blocks[0], stride=1, cfg=cfg[0:
+                                                                                   3 * sum(num_blocks[:1]) + 1])
+        self.layer2 = self._make_layer(block, 32, num_blocks[1], stride=2, cfg=cfg[3 * sum(num_blocks[:1]):
+                                                                                   3 * sum(num_blocks[:2]) + 1])
+        self.layer3 = self._make_layer(block, 64, num_blocks[2], stride=2, cfg=cfg[3 * sum(num_blocks[:2]):
+                                                                                   3 * sum(num_blocks[:3]) + 1])
+        self.layer4 = self._make_layer(block, 128, num_blocks[3], stride=2, cfg=cfg[3 * sum(num_blocks[:3]):
+                                                                                    3 * sum(num_blocks[:4]) + 1])
+        # self.fc = nn.Linear(128*block.expansion, num_classes)
+        self.fc = nn.Linear(cfg[-1], num_classes)
 
-    def _make_layer(self, block, planes, num_blocks, stride):
+    def _make_layer(self, block, planes, num_blocks, stride, cfg=None):
         strides = [stride] + [1]*(num_blocks-1)
         layers = []
-        for stride in strides:
-            layers.append(block(self.in_planes, planes, stride))
+        for i, stride in enumerate(strides):
+            layers.append(block(self.in_planes, planes, stride, cfg=cfg[3*i: 3*(i+1)+4]))
             self.in_planes = planes * block.expansion
         return nn.Sequential(*layers)
 
