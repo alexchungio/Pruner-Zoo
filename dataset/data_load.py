@@ -1,7 +1,8 @@
 import torch
 from torchvision import datasets, transforms
 from torch.utils.data import DataLoader
-import cv2
+
+__all__ = ['train_dataset', 'test_dataset']
 
 
 train_dataset = datasets.CIFAR100('../data', train=True, download=False,
