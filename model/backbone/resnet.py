@@ -86,8 +86,14 @@ class ResNet(nn.Module):
                                                                                    3 * sum(num_blocks[:3]) + 1])
         self.layer4 = self._make_layer(block, 128, num_blocks[3], stride=2, cfg=cfg[3 * sum(num_blocks[:3]):
                                                                                     3 * sum(num_blocks[:4]) + 1])
-        # self.fc = nn.Linear(128*block.expansion, num_classes)
         self.fc = nn.Linear(cfg[-1], num_classes)
+
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
 
     def _make_layer(self, block, planes, num_blocks, stride, cfg=None):
         strides = [stride] + [1]*(num_blocks-1)
